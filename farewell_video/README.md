@@ -18,3 +18,12 @@ python make_video.py --media <사진·영상 폴더> --font-dir <폰트 폴더> 
 
 다른 음원을 쓰려면 `--music`에 mp3 등을 주면 됩니다. 영상 길이에 맞춰 잘리고 끝 4초는 페이드아웃됩니다.
 자막 문구·순서는 `make_video.py`의 `SCENES` 목록에서 고칩니다.
+
+## 휴대폰용 세로 영상 (1080×1920)
+
+```bash
+python make_vertical.py --media <사진·영상 폴더> --font-dir <폰트 폴더> --music bgm.wav --out farewell_세로.mp4
+```
+
+장면·자막·길이는 `make_video.py`와 같습니다. 위쪽에 사진·영상, 아래쪽에 큰 자막(70px, 긴 줄은 자동 줄바꿈)을 두고,
+배경은 같은 장면을 흐리게 깝니다. 타이틀의 부제·날짜, 엔딩의 배경음악 표기도 휴대폰에서 잘 보이게 키웠습니다.
