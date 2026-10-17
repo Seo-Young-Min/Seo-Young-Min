@@ -10,9 +10,13 @@
 import argparse
 import os
 import subprocess
+import sys
 import tempfile
 
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import anim  # noqa: E402
+
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 W, H, FPS = 1920, 1080, 30
 XF = 1.0  # 장면 전환(크로스페이드) 길이(초)
@@ -24,30 +28,30 @@ READ_BASE = 1.3
 LEAD, TAIL, FADE, GAP = 1.0, 1.0, 0.5, 0.35
 
 # 장면: (종류, 파일, 자막 목록, 배치방식, 옵션)
-#   자막 하나 = 한 화면에 함께 보이는 줄들(최대 3줄)
-#   배치방식: cover = 16:9로 채움(켄번스), fit = 사진 전체 보이기, side = 시비 확대 + 오른쪽 자막
+#   종류: title / photo / video / anim(anim.py 애니메이션) / outro
+#   자막 하나 = 한 화면에 함께 보이는 줄들
+#   배치방식: cover = 16:9로 채움, fit = 사진 전체 보이기(crop 옵션으로 일부만), 사진은 모두 정지 화면(원본 그대로)
 SCENES = [
     ("title", "783c445a-image.jpg", [["시월의 어느 멋진 날에", "빅데이터 조사 과정 8개월의 여정"]], None, {"dur": 7.0}),
-    ("photo", "54cecf94-image.jpg", [["처음에는 낯설었던 데이터,", "하나하나 살피고 확인하며"],
-                                     ["우리는 배움의 길을 걸었습니다."]], "cover", {}),
-    ("video", "2e764b03-20261012_115501.mp4", [["데이터의 중요성과", "활용 가능성을 알게 되었습니다."]], None, {}),
-    ("photo", "80f093a6-image.jpg", [["숫자 하나에도 의미가 있었고,"]], "cover", {}),
-    ("photo", "993cc237-image.jpg", [["작은 오류 하나를 바로잡는 일에도", "정성과 책임이 필요했습니다."]], "cover", {}),
-    ("photo", "7a1fce7a-image.jpg", [["8개월의 시간,", "때로는 힘들고", "때로는 보람 있었지만"]], "side",
-     {"crop": (1320, 600, 2760, 2520), "min": 12.0}),
+    ("photo", "54cecf94-image.jpg", [["처음에는 낯설었던 데이터,", "하나하나 살피고 확인하며"]], "cover", {}),
+    ("video", "2e764b03-20261012_115501.mp4", [["우리는 배움의 길을 걸었습니다."]], None, {}),
+    ("anim", "greenhouse", [["데이터의 중요성과", "활용 가능성을 알게 되었습니다."]], None, {"min": 9.0}),
+    ("anim", "scroll", [["숫자 하나에도 의미가 있었고,"]], None, {"min": 9.0}),
+    ("anim", "fix", [["작은 오류 하나를 바로잡는 일에도", "정성과 책임이 필요했습니다."]], None, {"min": 9.5}),
+    ("photo", "7a1fce7a-image.jpg", [["8개월의 시간,", "때로는 힘들고 때로는 보람 있었지만"]], "fit",
+     {"crop": (1120, 140, 2980, 2790), "min": 10.0}),
     ("photo", "932d9a62-image.jpg", [["함께했기에", "여기까지 올 수 있었습니다."]], "fit", {}),
     ("photo", "83520179-image.jpg", [["우리가 조사하고 검수한 작은 기록들이", "우리 농업의 더 나은 내일을 만들고,"]], "fit", {}),
     ("photo", "f030f540-image.jpg", [["미래를 여는 소중한 밑거름이", "되기를 바랍니다."]], "fit", {}),
-    ("photo", "1a1db0fc-image.jpg", [["이제 하나의 여정은 마무리되지만,", "배움은 끝나지 않았습니다."]], "side",
-     {"crop": (1250, 860, 2560, 2480), "min": 12.0}),
+    ("photo", "1a1db0fc-image.jpg", [["이제 하나의 여정은 마무리되지만,", "배움은 끝나지 않았습니다."]], "fit",
+     {"crop": (880, 610, 2920, 2770), "min": 10.0}),
     ("photo", "0f24662b-image.jpg", [["함께한 모든 분께 감사드리며,", "8개월의 소중한 추억을 가슴에 담고"]], "cover", {}),
     ("video", "d3214c72-20261012_115648.mp4", [["또 다른 내일을 향해 나아갑니다."]], None, {}),
     ("outro", "f1eaf656-image.jpg", [["함께한 시간에 감사하며,", "우리의 도전은 계속됩니다."]], None, {"dur": 9.0}),
 ]
+MUSIC_CREDIT = "♪ 배경음악: 10월에 만든 3박자 왈츠 곡"
 
 CAP_SIZE = 58          # 하단 자막: 모든 줄 같은 크기·굵기로 균형
-SIDE_SIZE = 56         # 시비 장면 오른쪽 자막
-SIDE_X0 = 1000         # 시비 장면 자막 영역 시작 x
 
 
 def font(d, name, size):
@@ -105,24 +109,6 @@ def fit_on_blur(im, w, h):
     return bg
 
 
-def side_layout(im, crop, w, h):
-    """시비 글씨 부분을 화면 높이 가득 확대해 왼쪽에 두고, 오른쪽은 자막 자리로 비움."""
-    bg = blurred_bg(im, w, h, dim=0.55)
-    stone = im.crop(crop)
-    stone = ImageEnhance.Contrast(stone).enhance(1.15).filter(ImageFilter.UnsharpMask(2, 80, 2))
-    sh = int(h * 0.96)
-    stone = stone.resize((int(stone.width * sh / stone.height), sh), Image.LANCZOS)
-    x = int(w * 0.07)
-    y = (h - sh) // 2
-    shadow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    ImageDraw.Draw(shadow).rectangle([x + 10, y + 14, x + stone.width + 10, y + sh + 14], fill=(0, 0, 0, 170))
-    bg = bg.convert("RGBA")
-    bg.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(w // 120)))
-    bg = bg.convert("RGB")
-    bg.paste(stone, (x, y))
-    return bg
-
-
 def shadow_text(img, xy, text, fnt, fill=(255, 255, 255, 255), anchor="mm", blur=6):
     layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
     ImageDraw.Draw(layer).text((xy[0] + 3, xy[1] + 4), text, font=fnt, fill=(0, 0, 0, 210), anchor=anchor)
@@ -150,23 +136,14 @@ def gradient_png(path):
     img.save(path)
 
 
-def caption_png(path, lines, fd, side=False):
+def caption_png(path, lines, fd):
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    if side:
-        area_w = W - SIDE_X0 - 80
-        f, size = fitted_font(fd, lines, SIDE_SIZE, area_w)
-        lh = int(size * 1.75)
-        cx = SIDE_X0 + area_w // 2
-        y0 = H // 2 - lh * (len(lines) - 1) // 2
-        for k, ln in enumerate(lines):
-            shadow_text(img, (cx, y0 + k * lh), ln, f)
-    else:
-        f, size = fitted_font(fd, lines, CAP_SIZE, W - 220)
-        lh = int(size * 1.55)
-        y_last = H - 95
-        for k, ln in enumerate(lines):
-            y = y_last - (len(lines) - 1 - k) * lh
-            shadow_text(img, (W // 2, y), ln, f)
+    f, size = fitted_font(fd, lines, CAP_SIZE, W - 220)
+    lh = int(size * 1.55)
+    y_last = H - 95
+    for k, ln in enumerate(lines):
+        y = y_last - (len(lines) - 1 - k) * lh
+        shadow_text(img, (W // 2, y), ln, f)
     img.save(path)
 
 
@@ -184,6 +161,8 @@ def title_frame(path, src, lines, fd, outro=False):
         d.line([(W // 2 - 220, cy + 175), (W // 2 + 220, cy + 175)], fill=(255, 225, 235, 200), width=2)
         shadow_text(base, (W // 2, cy + 235), DATE_LINE, font(fd, "NanumMyeongjo.ttf", 44),
                     fill=(240, 232, 245, 255))
+        shadow_text(base, (W // 2, H - 70), MUSIC_CREDIT, font(fd, "NanumMyeongjo.ttf", 34),
+                    fill=(235, 228, 240, 255))
     else:
         shadow_text(base, (W // 2, cy - 40), big, font(fd, "NanumMyeongjoEB.ttf", 112))
         d.line([(W // 2 - 280, cy + 55), (W // 2 + 280, cy + 55)], fill=(255, 225, 235, 200), width=2)
@@ -191,7 +170,7 @@ def title_frame(path, src, lines, fd, outro=False):
                     fill=(255, 240, 225, 255))
         shadow_text(base, (W // 2, cy + 235), DATE_LINE, font(fd, "NanumMyeongjo.ttf", 44),
                     fill=(240, 232, 245, 255))
-    base.convert("RGB").save(path, quality=95)
+    base.convert("RGB").save(path)
 
 
 def run(cmd):
@@ -218,49 +197,39 @@ def build(media, fd, out, music):
     enc = ["-c:v", "libx264", "-preset", "medium", "-crf", "19", "-pix_fmt", "yuv420p", "-r", str(FPS), "-an"]
     for i, ((kind, src, caps, mode, opts), (dur, windows)) in enumerate(zip(SCENES, plans)):
         seg = os.path.join(tmp, f"seg{i:02d}.mp4")
-        frames = int(dur * FPS)
         src_path = os.path.join(media, src)
         if kind in ("title", "outro"):
-            still = os.path.join(tmp, f"still{i}.jpg")
+            still = os.path.join(tmp, f"still{i}.png")
             title_frame(still, src_path, caps[0], fd, outro=(kind == "outro"))
-            vf = (f"scale=3840:2160,zoompan=z='1+0.04*on/{frames}':x='iw/2-(iw/zoom/2)':"
-                  f"y='ih/2-(ih/zoom/2)':d={frames}:s={W}x{H}:fps={FPS}")
-            run(["ffmpeg", "-y", "-loop", "1", "-i", still, "-vf", vf, "-t", f"{dur:.2f}", *enc, seg])
+            run(["ffmpeg", "-y", "-loop", "1", "-i", still, "-vf", f"fps={FPS}", "-t", f"{dur:.2f}", *enc, seg])
         else:
             if kind == "photo":
                 im = ImageOps.exif_transpose(Image.open(src_path)).convert("RGB")
-                still = os.path.join(tmp, f"still{i}.jpg")
-                if mode == "side":
-                    side_layout(im, opts["crop"], W, H).save(still, quality=95)
-                    vf_bg = f"scale={W}:{H},fps={FPS}"  # 글씨를 읽어야 하므로 움직이지 않음
-                else:
-                    big_im = cover(im, 3840, 2160) if mode == "cover" else fit_on_blur(im, 3840, 2160)
-                    big_im.save(still, quality=95)
-                    zmax = 0.10 if mode == "cover" else 0.03
-                    drift = ""
-                    if mode == "cover":
-                        drift = ("+" if i % 2 else "-") + f"(on/{frames})*iw*0.02"
-                    vf_bg = (f"zoompan=z='1+{zmax}*on/{frames}':x='iw/2-(iw/zoom/2){drift}':"
-                             f"y='ih/2-(ih/zoom/2)':d={frames}:s={W}x{H}:fps={FPS}")
+                if "crop" in opts:
+                    im = im.crop(opts["crop"])
+                still = os.path.join(tmp, f"still{i}.png")
+                (cover(im, W, H) if mode == "cover" else fit_on_blur(im, W, H)).save(still)
+                vf_bg = f"fps={FPS}"  # 원본 그대로 정지 화면 (확대·이동하면 잔무늬가 반짝거림)
                 inputs = ["-loop", "1", "-i", still]
+            elif kind == "anim":
+                clip = os.path.join(tmp, f"anim{i}.mp4")
+                anim.render(src, dur, clip, fd)
+                vf_bg = f"fps={FPS}"
+                inputs = ["-i", clip]
             else:
-                vf_bg = f"scale={W}:{H},fps={FPS}"
+                vf_bg = f"fps={FPS}"  # 동영상은 원본 그대로
                 inputs = ["-i", src_path]
 
-            side = mode == "side"
             fc = [f"[0:v]{vf_bg},format=rgba[l0]"]
-            n_in = 1
-            last = "l0"
-            if not side:  # 하단 그라데이션은 장면 내내 유지
-                inputs += ["-loop", "1", "-t", f"{dur:.2f}", "-i", grad]
-                fc.append(f"[{n_in}:v]format=rgba,fade=t=in:st=0.4:d=0.8:alpha=1,"
-                          f"fade=t=out:st={dur - 1.0:.2f}:d=0.6:alpha=1[g]")
-                fc.append(f"[{last}][g]overlay=0:0[l{n_in}]")
-                last = f"l{n_in}"
-                n_in += 1
+            # 하단 그라데이션은 장면 내내 유지 (자막 가독성)
+            inputs += ["-loop", "1", "-t", f"{dur:.2f}", "-i", grad]
+            fc.append("[1:v]format=rgba,fade=t=in:st=0.4:d=0.8:alpha=1,"
+                      f"fade=t=out:st={dur - 1.0:.2f}:d=0.6:alpha=1[g]")
+            fc.append("[l0][g]overlay=0:0[l1]")
+            last, n_in = "l1", 2
             for k, (lines, (t0, t1)) in enumerate(zip(caps, windows)):
                 cap = os.path.join(tmp, f"cap{i}_{k}.png")
-                caption_png(cap, lines, fd, side=side)
+                caption_png(cap, lines, fd)
                 inputs += ["-loop", "1", "-t", f"{dur:.2f}", "-i", cap]
                 fc.append(f"[{n_in}:v]format=rgba,fade=t=in:st={t0:.2f}:d={FADE}:alpha=1,"
                           f"fade=t=out:st={t1 - FADE:.2f}:d={FADE}:alpha=1[c{k}]")
@@ -293,7 +262,7 @@ def build(media, fd, out, music):
                   f"afade=t=out:st={total - 4:.2f}:d=4[a]")
         amap = ["-map", "[a]", "-c:a", "aac", "-b:a", "192k"]
     run(["ffmpeg", "-y", *args, "-filter_complex", chain, "-map", "[v]", *amap,
-         "-c:v", "libx264", "-preset", "slow", "-crf", "23", "-maxrate", "9M", "-bufsize", "18M",
+         "-c:v", "libx264", "-preset", "slow", "-crf", "18", "-tune", "film",
          "-pix_fmt", "yuv420p", "-movflags", "+faststart", out])
     print(f"완료: {out}  ({total:.1f}초)")
 
