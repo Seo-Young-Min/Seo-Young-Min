@@ -32,14 +32,17 @@ LEAD, TAIL, FADE, GAP = 1.0, 1.0, 0.5, 0.35
 #   자막 하나 = 한 화면에 함께 보이는 줄들
 #   배치방식: cover = 16:9로 채움, fit = 사진 전체 보이기(crop 옵션으로 일부만), 사진은 모두 정지 화면(원본 그대로)
 SCENES = [
-    ("title", "783c445a-image.jpg", [["시월의 어느 멋진 날에", "빅데이터 조사 과정 8개월의 여정"]], None, {"dur": 7.0}),
+    ("title", "783c445a-image.jpg", [["빅데이터 조사 과정 8개월의 여정", "시월의 어느 멋진 날에"]], None, {"dur": 7.0}),
     ("photo", "54cecf94-image.jpg", [["처음에는 낯설었던 데이터,", "하나하나 살피고 확인하며"]], "cover", {}),
-    ("video", "2e764b03-20261012_115501.mp4", [["우리는 배움의 길을 걸었습니다."]], None, {}),
+    ("video", "2e764b03-20261012_115501.mp4", [["우리의 생소한 빅데이터 조사가", "시작되었습니다."]], None, {}),
     ("anim", "greenhouse", [["데이터의 중요성과", "활용 가능성을 알게 되었습니다."]], None, {"min": 9.0}),
     ("anim", "scroll", [["숫자 하나에도 의미가 있었고,"]], None, {"min": 9.0}),
     ("anim", "fix", [["작은 오류 하나를 바로잡는 일에도", "정성과 책임이 필요했습니다."]], None, {"min": 9.5}),
     ("photo", "7a1fce7a-image.jpg", [["8개월의 시간,", "때로는 힘들고 때로는 보람 있었지만"]], "fit",
      {"crop": (1120, 140, 2980, 2790), "min": 10.0}),
+    ("video", "65fde172-1000025668.mp4", [["2026 데이터·인공지능 현장 활용 경진대회"],
+                                          ["동료들의 뜨거운 응원 속에서"]], None,
+     {"audio": True}),  # 경진대회 응원 영상: 현장 함성을 살리고 배경음악은 잠시 낮춤
     ("photo", "932d9a62-image.jpg", [["함께했기에", "여기까지 올 수 있었습니다."]], "fit", {}),
     ("photo", "83520179-image.jpg", [["우리가 조사하고 검수한 작은 기록들이", "우리 농업의 더 나은 내일을 만들고,"]], "fit", {}),
     ("photo", "f030f540-image.jpg", [["미래를 여는 소중한 밑거름이", "되기를 바랍니다."]], "fit", {}),
@@ -51,7 +54,7 @@ SCENES = [
 ]
 MUSIC_CREDIT = "♪ 배경음악: 10월에 만든 3박자 왈츠 곡"
 
-CAP_SIZE = 58          # 하단 자막: 모든 줄 같은 크기·굵기로 균형
+CAP_SIZE = 70          # 하단 자막: 모든 줄 같은 크기·굵기로 균형 (세로 영상과 같은 크기)
 
 
 def font(d, name, size):
@@ -104,8 +107,8 @@ def blurred_bg(im, w, h, dim=0.35):
 def fit_on_blur(im, w, h):
     """원본 전체를 보이게 하고 남는 공간은 같은 사진 흐림 배경으로 채움 (하단은 자막 자리)."""
     bg = blurred_bg(im, w, h)
-    fg = ImageOps.contain(im, (w, int(h * 0.76)), Image.LANCZOS)
-    bg.paste(fg, ((w - fg.width) // 2, int(h * 0.03)))
+    fg = ImageOps.contain(im, (w, int(h * 0.73)), Image.LANCZOS)
+    bg.paste(fg, ((w - fg.width) // 2, int(h * 0.025)))
     return bg
 
 
@@ -140,7 +143,7 @@ def caption_png(path, lines, fd):
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     f, size = fitted_font(fd, lines, CAP_SIZE, W - 220)
     lh = int(size * 1.55)
-    y_last = H - 95
+    y_last = H - 80
     for k, ln in enumerate(lines):
         y = y_last - (len(lines) - 1 - k) * lh
         shadow_text(img, (W // 2, y), ln, f)
@@ -159,17 +162,18 @@ def title_frame(path, src, lines, fd, outro=False):
         shadow_text(base, (W // 2, cy - 40), big, f)
         shadow_text(base, (W // 2, cy + 80), small, f, fill=(255, 240, 225, 255))
         d.line([(W // 2 - 220, cy + 175), (W // 2 + 220, cy + 175)], fill=(255, 225, 235, 200), width=2)
-        shadow_text(base, (W // 2, cy + 235), DATE_LINE, font(fd, "NanumMyeongjo.ttf", 44),
+        shadow_text(base, (W // 2, cy + 245), DATE_LINE, font(fd, "NanumMyeongjoEB.ttf", 56),
+                    fill=(245, 236, 248, 255))
+        shadow_text(base, (W // 2, H - 80), MUSIC_CREDIT, font(fd, "NanumMyeongjoEB.ttf", 44),
                     fill=(240, 232, 245, 255))
-        shadow_text(base, (W // 2, H - 70), MUSIC_CREDIT, font(fd, "NanumMyeongjo.ttf", 34),
-                    fill=(235, 228, 240, 255))
     else:
-        shadow_text(base, (W // 2, cy - 40), big, font(fd, "NanumMyeongjoEB.ttf", 112))
-        d.line([(W // 2 - 280, cy + 55), (W // 2 + 280, cy + 55)], fill=(255, 225, 235, 200), width=2)
-        shadow_text(base, (W // 2, cy + 135), small, font(fd, "NanumMyeongjoEB.ttf", 64),
+        f_big, _ = fitted_font(fd, [big], 104, W - 200)
+        shadow_text(base, (W // 2, cy - 40), big, f_big)
+        d.line([(W // 2 - 300, cy + 55), (W // 2 + 300, cy + 55)], fill=(255, 225, 235, 210), width=3)
+        shadow_text(base, (W // 2, cy + 140), small, font(fd, "NanumMyeongjoEB.ttf", 68),
                     fill=(255, 240, 225, 255))
-        shadow_text(base, (W // 2, cy + 235), DATE_LINE, font(fd, "NanumMyeongjo.ttf", 44),
-                    fill=(240, 232, 245, 255))
+        shadow_text(base, (W // 2, cy + 245), DATE_LINE, font(fd, "NanumMyeongjoEB.ttf", 56),
+                    fill=(245, 236, 248, 255))
     base.convert("RGB").save(path)
 
 
@@ -186,6 +190,37 @@ def plan_all(media):
         plans.append((dur, windows))
     total = sum(d for d, _ in plans) - XF * (len(plans) - 1)
     return plans, total
+
+
+def audio_chain(media, plans, total, n_video_inputs, args, music):
+    """배경음악 + 현장음을 살릴 장면(옵션 audio)의 소리. 그 장면 동안 배경음악은 25%로 낮춤."""
+    starts, t = [], 0.0
+    for dur, _ in plans:
+        starts.append(t)
+        t += dur - XF
+    args += ["-i", music]
+    m = n_video_inputs
+    duck, mix, n = [], [], 0
+    for (kind, src, caps, mode, opts), (dur, _), st in zip(SCENES, plans, starts):
+        if not opts.get("audio"):
+            continue
+        s, e = st + 0.5, st + dur - 0.5
+        duck.append(f"0.75*clip((t-{s:.2f})/1.2,0,1)*clip(({e:.2f}-t)/1.2,0,1)")
+        args += ["-i", os.path.join(media, src)]
+        n += 1
+        ms = int(st * 1000)
+        mix.append(f"[{m + n}:a]atrim=0:{dur - 0.1:.2f},asetpts=PTS-STARTPTS,afade=t=in:d=0.8,"
+                   f"afade=t=out:st={dur - 1.6:.2f}:d=1.5,volume=1.4,adelay={ms}|{ms}[s{n}]")
+    vol = f"volume='1-({'+'.join(duck)})':eval=frame," if duck else ""
+    chain = (f"[{m}:a]atrim=0:{total:.2f},asetpts=PTS-STARTPTS,{vol}afade=t=in:d=1.5,"
+             f"afade=t=out:st={total - 4:.2f}:d=4[mus]")
+    if mix:
+        chain += ";" + ";".join(mix)
+        chain += ";[mus]" + "".join(f"[s{k}]" for k in range(1, n + 1))
+        chain += f"amix=inputs={n + 1}:normalize=0:duration=first,alimiter=limit=0.95[a]"
+    else:
+        chain += ";[mus]anull[a]"
+    return chain
 
 
 def build(media, fd, out, music):
@@ -256,10 +291,7 @@ def build(media, fd, out, music):
 
     amap = []
     if music:
-        args += ["-i", music]
-        a = len(segs)
-        chain += (f";[{a}:a]atrim=0:{total:.2f},asetpts=PTS-STARTPTS,afade=t=in:d=1.5,"
-                  f"afade=t=out:st={total - 4:.2f}:d=4[a]")
+        chain += ";" + audio_chain(media, plans, total, len(segs), args, music)
         amap = ["-map", "[a]", "-c:a", "aac", "-b:a", "192k"]
     run(["ffmpeg", "-y", *args, "-filter_complex", chain, "-map", "[v]", *amap,
          "-c:v", "libx264", "-preset", "slow", "-crf", "18", "-tune", "film",

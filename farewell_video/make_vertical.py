@@ -179,9 +179,7 @@ def build(media, fd, out, music):
     chain += f"[{prev}]fade=t=in:st=0:d=1.2,fade=t=out:st={total - 2:.2f}:d=2[v]"
     amap = []
     if music:
-        args += ["-i", music]
-        chain += (f";[{len(segs)}:a]atrim=0:{total:.2f},asetpts=PTS-STARTPTS,afade=t=in:d=1.5,"
-                  f"afade=t=out:st={total - 4:.2f}:d=4[a]")
+        chain += ";" + mv.audio_chain(media, plans, total, len(segs), args, music)
         amap = ["-map", "[a]", "-c:a", "aac", "-b:a", "192k"]
     mv.run(["ffmpeg", "-y", *args, "-filter_complex", chain, "-map", "[v]", *amap,
             "-c:v", "libx264", "-preset", "slow", "-crf", "18", "-tune", "film",
